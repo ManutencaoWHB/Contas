@@ -45,7 +45,7 @@ driver = webdriver.Chrome(
     service=ChromeService(ChromeDriverManager().install()),
     options=options
 )
-wait = WebDriverWait(driver, 90) # Aumentado para garantir downloads lentos
+wait = WebDriverWait(driver, 90)
 
 # ===============================
 # FUNÇÕES INTELIGENTES
@@ -53,6 +53,8 @@ wait = WebDriverWait(driver, 90) # Aumentado para garantir downloads lentos
 def periodo_mes_atual():
     primeiro = DATA_HOJE.replace(day=1)
     _, ultimo_dia = calendar.monthrange(DATA_HOJE.year, DATA_HOJE.month)
+    # CORREÇÃO AQUI: Criando a variável 'ultimo' que faltava
+    ultimo = DATA_HOJE.replace(day=ultimo_dia)
     return primeiro.strftime("%d/%m/%Y"), ultimo.strftime("%d/%m/%Y")
 
 def salvar_html_pagina(nome):
@@ -148,7 +150,7 @@ try:
     Select(driver.find_element(By.ID, "str_fil")).select_by_visible_text("WHB CTBA")
     Select(driver.find_element(By.ID, "str_planta")).select_by_visible_text("USINAGEM CTBA")
     driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
-    time.sleep(15) # Mais tempo para garantir carregamento
+    time.sleep(15) 
     
     html_pcp = salvar_html_pagina("pcp347_temp.html")
     df_entrada = ler_tabela_inteligente(html_pcp, "PCP347")
@@ -169,7 +171,7 @@ try:
 
     print("⏳ Aguardando download SD3...")
     arquivo_sd3 = None
-    for _ in range(90): # Aumentei timeout para 90s
+    for _ in range(90): 
         novos = set(os.listdir(DOWNLOAD_DIR)) - arquivos_antes
         for f in novos:
             if f.endswith(('.xls', '.xlsx')) and "crdownload" not in f:
@@ -180,8 +182,7 @@ try:
 
     if not arquivo_sd3: raise Exception("Download SD3 falhou.")
     
-    # IMPORTANTE: Espera 2s extras para garantir que o arquivo foi escrito em disco
-    time.sleep(2)
+    time.sleep(2) # Garante escrita em disco
     
     df_consumo = ler_tabela_inteligente(arquivo_sd3, "SD3")
 
