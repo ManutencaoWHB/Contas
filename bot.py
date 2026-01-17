@@ -26,7 +26,7 @@ DOWNLOAD_DIR = os.getcwd()
 DATA_HOJE = date.today()
 
 # ===============================
-# CONFIGURAÇÃO CHROME (HEADLESS)
+# CONFIGURAÇÃO CHROME
 # ===============================
 options = webdriver.ChromeOptions()
 prefs = {
@@ -45,15 +45,14 @@ driver = webdriver.Chrome(
     service=ChromeService(ChromeDriverManager().install()),
     options=options
 )
-wait = WebDriverWait(driver, 60)
+wait = WebDriverWait(driver, 90) # Aumentado para garantir downloads lentos
 
 # ===============================
-# FUNÇÕES DE APOIO
+# FUNÇÕES INTELIGENTES
 # ===============================
 def periodo_mes_atual():
     primeiro = DATA_HOJE.replace(day=1)
     _, ultimo_dia = calendar.monthrange(DATA_HOJE.year, DATA_HOJE.month)
-    ultimo = DATA_HOJE.replace(day=ultimo_dia)
     return primeiro.strftime("%d/%m/%Y"), ultimo.strftime("%d/%m/%Y")
 
 def salvar_html_pagina(nome):
@@ -62,45 +61,74 @@ def salvar_html_pagina(nome):
         f.write(driver.page_source)
     return path
 
-def ler_tabela_regra_linha_3(caminho_arquivo):
+def ler_tabela_inteligente(caminho_arquivo, nome_ref):
     """
-    Lê o arquivo HTML/XLS e aplica a regra estrita:
-    O cabeçalho está na LINHA 3 (índice 2).
+    Lê o arquivo e procura a tabela correta baseada no CONTEÚDO,
+    não apenas no tamanho.
     """
-    print(f"📖 Lendo: {os.path.basename(caminho_arquivo)}")
+    print(f"📖 Lendo {nome_ref}: {os.path.basename(caminho_arquivo)}")
     
-    # 1. Lê todas as tabelas sem assumir cabeçalho (header=None)
-    # Isso traz TUDO que está no arquivo bruto
-    dfs = pd.read_html(caminho_arquivo, decimal=",", thousands=".", header=None)
-    
-    if not dfs:
-        raise ValueError("Nenhuma tabela encontrada no arquivo.")
+    try:
+        # Tenta ler como HTML (padrão do portal)
+        dfs = pd.read_html(caminho_arquivo, decimal=",", thousands=".", header=None)
+    except Exception:
+        # Se falhar, tenta ler como Excel real
+        try:
+            dfs = [pd.read_excel(caminho_arquivo, header=None)]
+        except Exception as e:
+            raise ValueError(f"Não foi possível ler o arquivo: {e}")
 
-    # 2. Pega a maior tabela (onde estão os dados)
-    df = max(dfs, key=len)
+    if not dfs:
+        raise ValueError("Nenhuma tabela encontrada.")
+
+    print(f"   - {len(dfs)} tabelas encontradas.")
     
-    print(f"   - Linhas brutas encontradas: {len(df)}")
+    tabela_escolhida = None
     
-    # 3. Aplica a Regra da Linha 3
-    # Verifica se tem linhas suficientes
-    if len(df) > 3:
-        # A linha 3 (índice 2) vira o nome das colunas
-        df.columns = df.iloc[2] 
-        # Pega da linha 4 (índice 3) para baixo (os dados)
-        df = df[3:].reset_index(drop=True)
-        print("   - Regra aplicada: Cabeçalho definido na Linha 3.")
+    # ESTRATÉGIA: Procura a tabela que tem cabeçalho real
+    for i, df in enumerate(dfs):
+        # Converte para string para buscar palavras-chave
+        texto = df.head(10).astype(str).to_string().upper()
+        
+        # Se tiver 'PRODUTO', 'CUSTO' ou 'DESCRIÇÃO', é a nossa tabela!
+        if "PRODUTO" in texto or "CUSTO" in texto or "DESC" in texto:
+            print(f"   - ✅ Tabela {i} identificada por conteúdo.")
+            tabela_escolhida = df
+            break
+    
+    # Se não achou por palavra, usa a maior (fallback)
+    if tabela_escolhida is None:
+        print("   - ⚠️ Aviso: Conteúdo não reconhecido. Usando a maior tabela.")
+        tabela_escolhida = max(dfs, key=len)
+
+    # TRATAMENTO DO CABEÇALHO (LINHA 3)
+    # Procuramos onde está o cabeçalho "Custo Moeda 1" ou similar
+    idx_cabecalho = -1
+    for idx, row in tabela_escolhida.head(10).iterrows():
+        row_str = row.astype(str).str.upper().values
+        if any("CUSTO" in str(x) for x in row_str):
+            idx_cabecalho = idx
+            break
+            
+    if idx_cabecalho != -1:
+        print(f"   - Cabeçalho detectado na linha {idx_cabecalho + 1}.")
+        tabela_escolhida.columns = tabela_escolhida.iloc[idx_cabecalho]
+        tabela_escolhida = tabela_escolhida[idx_cabecalho + 1:].reset_index(drop=True)
     else:
-        print("   ⚠️ AVISO: Tabela tem menos de 3 linhas. Retornando bruta.")
-    
-    print(f"   - Linhas de dados finais: {len(df)}")
-    return df
+        # Se não achou dinamicamente, força a regra da linha 3 (índice 2)
+        print("   - Cabeçalho não detectado automaticamente. Forçando Linha 3.")
+        if len(tabela_escolhida) > 2:
+            tabela_escolhida.columns = tabela_escolhida.iloc[2]
+            tabela_escolhida = tabela_escolhida[3:].reset_index(drop=True)
+
+    print(f"   - Linhas de dados finais: {len(tabela_escolhida)}")
+    return tabela_escolhida
 
 # ===============================
 # EXECUÇÃO
 # ===============================
 try:
-    if not SENHA:
-        raise ValueError("Senha não definida nas Secrets!")
+    if not SENHA: raise ValueError("Senha não definida!")
 
     print("🔐 Login...")
     driver.get(URL_LOGIN)
@@ -108,89 +136,68 @@ try:
     driver.find_element(By.ID, "senha").send_keys(SENHA)
     driver.find_element(By.ID, "submitButton").click()
     wait.until(EC.url_to_be(URL_HOME))
-    print("✅ Login OK.")
-
+    
     data_ini, data_fim = periodo_mes_atual()
-
-    # ---------------------------------------------------------
+    
     # 1. PCP347 (ENTRADA)
-    # ---------------------------------------------------------
-    print("📄 Baixando PCP347 (Entrada)...")
+    print("📄 PCP347 (Entrada)...")
     driver.get(URL_PCP347)
     wait.until(EC.url_contains("pcp347"))
-
-    driver.find_element(By.ID, "de_data").clear()
-    driver.find_element(By.ID, "de_data").send_keys(data_ini)
-    driver.find_element(By.ID, "ate_data").clear()
-    driver.find_element(By.ID, "ate_data").send_keys(data_fim)
-    
+    driver.find_element(By.ID, "de_data").clear(); driver.find_element(By.ID, "de_data").send_keys(data_ini)
+    driver.find_element(By.ID, "ate_data").clear(); driver.find_element(By.ID, "ate_data").send_keys(data_fim)
     Select(driver.find_element(By.ID, "str_fil")).select_by_visible_text("WHB CTBA")
     Select(driver.find_element(By.ID, "str_planta")).select_by_visible_text("USINAGEM CTBA")
-    
     driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
-    time.sleep(10)
+    time.sleep(15) # Mais tempo para garantir carregamento
     
-    # Salva o HTML atual
     html_pcp = salvar_html_pagina("pcp347_temp.html")
-    
-    # Processa com a regra da linha 3
-    df_entrada = ler_tabela_regra_linha_3(html_pcp)
+    df_entrada = ler_tabela_inteligente(html_pcp, "PCP347")
 
-    # ---------------------------------------------------------
     # 2. SD3 (CONSUMO)
-    # ---------------------------------------------------------
-    print("📊 Baixando SD3 (Consumo)...")
+    print("📊 SD3 (Consumo)...")
     driver.execute_script("wl('/cus027')")
-    
     wait.until(EC.url_contains("cus027"))
-    driver.find_element(By.ID, "de_data").clear()
-    driver.find_element(By.ID, "de_data").send_keys(data_ini)
-    driver.find_element(By.ID, "ate_data").clear()
-    driver.find_element(By.ID, "ate_data").send_keys(data_fim)
-
+    driver.find_element(By.ID, "de_data").clear(); driver.find_element(By.ID, "de_data").send_keys(data_ini)
+    driver.find_element(By.ID, "ate_data").clear(); driver.find_element(By.ID, "ate_data").send_keys(data_fim)
     Select(driver.find_element(By.ID, "str_emp")).select_by_visible_text("WHB AUTOMOTIVE / CURITIBA")
     Select(driver.find_element(By.ID, "str_consumo")).select_by_visible_text("SIM")
     driver.find_element(By.ID, "ate_cod").send_keys("ZZZZZZZZZZZZZZZ")
     driver.find_element(By.ID, "ate_tipo").send_keys("ZZ")
-
+    
     arquivos_antes = set(os.listdir(DOWNLOAD_DIR))
     driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
 
-    print("⏳ Aguardando download...")
+    print("⏳ Aguardando download SD3...")
     arquivo_sd3 = None
-    for _ in range(60):
+    for _ in range(90): # Aumentei timeout para 90s
         novos = set(os.listdir(DOWNLOAD_DIR)) - arquivos_antes
         for f in novos:
-            if f.endswith(('.xls', '.xlsx')):
+            if f.endswith(('.xls', '.xlsx')) and "crdownload" not in f:
                 arquivo_sd3 = os.path.join(DOWNLOAD_DIR, f)
                 break
         if arquivo_sd3: break
         time.sleep(1)
 
-    if not arquivo_sd3:
-        raise Exception("Download SD3 falhou.")
+    if not arquivo_sd3: raise Exception("Download SD3 falhou.")
     
-    # Processa com a regra da linha 3
-    df_consumo = ler_tabela_regra_linha_3(arquivo_sd3)
+    # IMPORTANTE: Espera 2s extras para garantir que o arquivo foi escrito em disco
+    time.sleep(2)
+    
+    df_consumo = ler_tabela_inteligente(arquivo_sd3, "SD3")
 
-    # ---------------------------------------------------------
-    # 3. SALVAR FINAL
-    # ---------------------------------------------------------
+    # 3. SALVAR
     caminho_final = os.path.join(DOWNLOAD_DIR, "dados_dashboard.xlsx")
-    
-    print("🔄 Gerando arquivo consolidado...")
     with pd.ExcelWriter(caminho_final, engine='openpyxl') as writer:
         df_consumo.to_excel(writer, sheet_name="Consumo", index=False)
         df_entrada.to_excel(writer, sheet_name="Entrada", index=False)
 
-    print(f"🎉 SUCESSO! Arquivo gerado: {caminho_final}")
-    print(f"   - Aba Consumo: {len(df_consumo)} linhas")
-    print(f"   - Aba Entrada: {len(df_entrada)} linhas")
+    print(f"🎉 FINALIZADO: {caminho_final}")
+    print(f"   - Consumo: {len(df_consumo)} linhas")
+    print(f"   - Entrada: {len(df_entrada)} linhas")
 
 except Exception as e:
     print(f"❌ ERRO: {e}")
     driver.save_screenshot("erro_final.png")
     raise e
-
 finally:
     driver.quit()
