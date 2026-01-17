@@ -21,18 +21,15 @@ URL_HOME = "https://portal.whbbrasil.com.br/Portalhome"
 URL_PCP347 = "https://portal.whbbrasil.com.br/pcp347"
 
 USUARIO = "luanfp"
-# Pega a senha dos segredos do GitHub (Variável de Ambiente)
 SENHA = os.getenv("SUA_SENHA_PORTAL")
 
-# Na nuvem, usamos o diretório atual do container
 DOWNLOAD_DIR = os.getcwd()
 
 DATA_HOJE = date.today()
-# Formato que costuma vir no nome do arquivo (ajuste se necessário)
 DIA_STR = DATA_HOJE.strftime("%d-%m-%Y")
 
 # ===============================
-# CHROME OPTIONS (HEADLESS)
+# CHROME OPTIONS
 # ===============================
 options = webdriver.ChromeOptions()
 prefs = {
@@ -42,8 +39,6 @@ prefs = {
     "safebrowsing.enabled": True
 }
 options.add_experimental_option("prefs", prefs)
-
-# Configurações obrigatórias para rodar no GitHub Actions (Linux s/ interface)
 options.add_argument("--headless=new") 
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
@@ -54,10 +49,10 @@ driver = webdriver.Chrome(
     options=options
 )
 
-wait = WebDriverWait(driver, 60) # Tempo aumentado para segurança na nuvem
+wait = WebDriverWait(driver, 60)
 
 # ===============================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES
 # ===============================
 def periodo_mes_atual():
     primeiro = DATA_HOJE.replace(day=1)
@@ -72,11 +67,11 @@ def salvar_html_pagina(nome):
     return path
 
 # ===============================
-# EXECUÇÃO PRINCIPAL
+# EXECUÇÃO
 # ===============================
 try:
     if not SENHA:
-        raise ValueError("A senha não foi definida nas Secrets do GitHub (SUA_SENHA_PORTAL)!")
+        raise ValueError("Senha não definida!")
 
     print("🔐 Realizando Login...")
     driver.get(URL_LOGIN)
@@ -88,9 +83,9 @@ try:
 
     data_ini, data_fim = periodo_mes_atual()
 
-    # ==============================================================================
-    # 1. PROCESSAR PCP347 -> SERÁ A ABA "ENTRADA" (Segunda Aba)
-    # ==============================================================================
+    # ---------------------------------------------------------
+    # 1. PCP347 (ENTRADA)
+    # ---------------------------------------------------------
     print("📄 Acessando PCP347...")
     driver.get(URL_PCP347)
     wait.until(EC.url_contains("pcp347"))
@@ -106,19 +101,16 @@ try:
     botao_ok_xpath = "//button[.//i[contains(@class,'fa-check')]]"
     wait.until(EC.element_to_be_clickable((By.XPATH, botao_ok_xpath))).click()
 
-    time.sleep(10) # Espera tabela carregar
-
-    print("📥 Capturando tabela PCP347...")
-    html_path = salvar_html_pagina(f"pcp347_temp.html")
+    time.sleep(10)
     
-    # Lê a tabela do HTML
-    # O PCP347 vira o DataFrame 'df_entrada'
+    # Lê a tabela direto do HTML da página
+    html_path = salvar_html_pagina(f"pcp347_temp.html")
     df_entrada = pd.read_html(html_path, decimal=",", thousands=".")[0]
-    print(f"✅ Dados PCP347 capturados: {len(df_entrada)} linhas.")
+    print(f"✅ Dados PCP347 (Entrada): {len(df_entrada)} linhas.")
 
-    # ==============================================================================
-    # 2. PROCESSAR SD3 -> SERÁ A ABA "CONSUMO" (Primeira Aba)
-    # ==============================================================================
+    # ---------------------------------------------------------
+    # 2. SD3 (CONSUMO)
+    # ---------------------------------------------------------
     print("📊 Acessando SD3...")
     driver.execute_script("wl('/cus027')")
     
@@ -140,7 +132,6 @@ try:
     print("⏳ Aguardando download SD3...")
     arquivo_sd3_path = None
     
-    # Loop de espera (60s)
     for _ in range(60):
         arquivos_agora = set(os.listdir(DOWNLOAD_DIR))
         novos = arquivos_agora - arquivos_antes
@@ -153,36 +144,49 @@ try:
         time.sleep(1)
 
     if not arquivo_sd3_path:
-        raise Exception("Erro: O download do SD3 falhou (timeout).")
+        raise Exception("Download SD3 falhou.")
 
     print(f"✅ SD3 baixado: {arquivo_sd3_path}")
     
-    # Lê o Excel SD3 pulando as 2 primeiras linhas (header=2)
-    # O SD3 vira o DataFrame 'df_consumo'
-    print("🧹 Lendo SD3 e limpando cabeçalho...")
-    df_consumo = pd.read_excel(arquivo_sd3_path, header=2)
+    # --- CORREÇÃO DO ERRO ---
+    print("🧹 Lendo SD3 (Tentativa Blindada)...")
+    try:
+        # Tenta ler como Excel binário antigo (.xls) - Requer xlrd
+        if arquivo_sd3_path.endswith('.xls'):
+            df_consumo = pd.read_excel(arquivo_sd3_path, header=2, engine='xlrd')
+        else:
+            df_consumo = pd.read_excel(arquivo_sd3_path, header=2)
+    except Exception as e:
+        print(f"⚠️ Erro ao ler como Excel ({e}). Tentando ler como HTML...")
+        # Se falhar, tenta ler como HTML (muito comum o arquivo ser HTML renomeado para .xls)
+        # O header=2 aqui tenta pular linhas se o HTML tiver cabeçalho sujo
+        try:
+            df_consumo = pd.read_html(arquivo_sd3_path, decimal=",", thousands=".", header=2)[0]
+        except:
+             # Última tentativa: ler HTML sem pular cabeçalho
+             df_consumo = pd.read_html(arquivo_sd3_path, decimal=",", thousands=".")[0]
+             # Remove as duas primeiras linhas manualmente
+             df_consumo = df_consumo.iloc[2:].reset_index(drop=True)
+             # Redefine o cabeçalho
+             df_consumo.columns = df_consumo.iloc[0]
+             df_consumo = df_consumo[1:]
+             
+    print(f"✅ SD3 lido com sucesso: {len(df_consumo)} linhas.")
 
-    # ==============================================================================
-    # 3. JUNTAR E SALVAR (ORDEM IMPORTANTE PARA O HTML)
-    # ==============================================================================
+    # ---------------------------------------------------------
+    # 3. JUNTAR E SALVAR
+    # ---------------------------------------------------------
     print("🔄 Gerando 'dados_dashboard.xlsx'...")
     caminho_final = os.path.join(DOWNLOAD_DIR, "dados_dashboard.xlsx")
 
     with pd.ExcelWriter(caminho_final, engine='openpyxl') as writer:
-        # ABA 1: Consumo (Vem do SD3)
         df_consumo.to_excel(writer, sheet_name="Consumo", index=False)
-        
-        # ABA 2: Entrada (Vem do PCP347)
         df_entrada.to_excel(writer, sheet_name="Entrada", index=False)
 
-    print(f"🎉 ARQUIVO FINAL GERADO COM SUCESSO: {caminho_final}")
-    print("--- Estatísticas ---")
-    print(f"Aba 'Consumo' (SD3): {len(df_consumo)} linhas")
-    print(f"Aba 'Entrada' (PCP347): {len(df_entrada)} linhas")
+    print(f"🎉 ARQUIVO FINAL: {caminho_final}")
 
 except Exception as e:
     print(f"❌ ERRO CRÍTICO: {e}")
-    # Salva print para debug no GitHub Artifacts
     driver.save_screenshot("erro_debug.png")
     raise e
 
