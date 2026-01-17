@@ -26,7 +26,7 @@ DOWNLOAD_DIR = os.getcwd()
 DATA_HOJE = date.today()
 
 # ===============================
-# CONFIGURAÇÃO CHROME
+# CHROME OPTIONS
 # ===============================
 options = webdriver.ChromeOptions()
 prefs = {
@@ -53,7 +53,6 @@ wait = WebDriverWait(driver, 90)
 def periodo_mes_atual():
     primeiro = DATA_HOJE.replace(day=1)
     _, ultimo_dia = calendar.monthrange(DATA_HOJE.year, DATA_HOJE.month)
-    # CORREÇÃO AQUI: Criando a variável 'ultimo' que faltava
     ultimo = DATA_HOJE.replace(day=ultimo_dia)
     return primeiro.strftime("%d/%m/%Y"), ultimo.strftime("%d/%m/%Y")
 
@@ -63,68 +62,65 @@ def salvar_html_pagina(nome):
         f.write(driver.page_source)
     return path
 
-def ler_tabela_inteligente(caminho_arquivo, nome_ref):
+def normalizar_cabecalho(df_bruto, nome_ref):
     """
-    Lê o arquivo e procura a tabela correta baseada no CONTEÚDO,
-    não apenas no tamanho.
+    Procura a linha que contém a palavra 'Produto' ou 'Custo' para definir como cabeçalho.
     """
-    print(f"📖 Lendo {nome_ref}: {os.path.basename(caminho_arquivo)}")
-    
-    try:
-        # Tenta ler como HTML (padrão do portal)
-        dfs = pd.read_html(caminho_arquivo, decimal=",", thousands=".", header=None)
-    except Exception:
-        # Se falhar, tenta ler como Excel real
-        try:
-            dfs = [pd.read_excel(caminho_arquivo, header=None)]
-        except Exception as e:
-            raise ValueError(f"Não foi possível ler o arquivo: {e}")
+    print(f"   --- Diagnóstico Visual do {nome_ref} ---")
+    # Imprime as primeiras 5 linhas para sabermos o que o Python está vendo
+    print(df_bruto.head(5).to_string()) 
+    print("   ----------------------------------------")
 
-    if not dfs:
-        raise ValueError("Nenhuma tabela encontrada.")
+    # 1. Verifica se o cabeçalho já está nas colunas (Python leu direto)
+    colunas_str = " ".join([str(c).upper() for c in df_bruto.columns])
+    if "PRODUTO" in colunas_str or "CUSTO" in colunas_str:
+        print(f"   ✅ Cabeçalho já identificado corretamente nas colunas do {nome_ref}.")
+        return df_bruto
 
-    print(f"   - {len(dfs)} tabelas encontradas.")
-    
-    tabela_escolhida = None
-    
-    # ESTRATÉGIA: Procura a tabela que tem cabeçalho real
-    for i, df in enumerate(dfs):
-        # Converte para string para buscar palavras-chave
-        texto = df.head(10).astype(str).to_string().upper()
-        
-        # Se tiver 'PRODUTO', 'CUSTO' ou 'DESCRIÇÃO', é a nossa tabela!
-        if "PRODUTO" in texto or "CUSTO" in texto or "DESC" in texto:
-            print(f"   - ✅ Tabela {i} identificada por conteúdo.")
-            tabela_escolhida = df
-            break
-    
-    # Se não achou por palavra, usa a maior (fallback)
-    if tabela_escolhida is None:
-        print("   - ⚠️ Aviso: Conteúdo não reconhecido. Usando a maior tabela.")
-        tabela_escolhida = max(dfs, key=len)
-
-    # TRATAMENTO DO CABEÇALHO (LINHA 3)
-    # Procuramos onde está o cabeçalho "Custo Moeda 1" ou similar
+    # 2. Procura a linha de cabeçalho nos dados
     idx_cabecalho = -1
-    for idx, row in tabela_escolhida.head(10).iterrows():
-        row_str = row.astype(str).str.upper().values
-        if any("CUSTO" in str(x) for x in row_str):
+    for idx, row in df_bruto.head(15).iterrows():
+        # Converte linha para texto maiúsculo
+        linha_txt = row.astype(str).str.upper().values
+        # Procura palavras chaves que existem nos dois arquivos
+        if any("PRODUTO" in str(x) for x in linha_txt) and any("DESC" in str(x) for x in linha_txt):
             idx_cabecalho = idx
             break
             
     if idx_cabecalho != -1:
-        print(f"   - Cabeçalho detectado na linha {idx_cabecalho + 1}.")
-        tabela_escolhida.columns = tabela_escolhida.iloc[idx_cabecalho]
-        tabela_escolhida = tabela_escolhida[idx_cabecalho + 1:].reset_index(drop=True)
-    else:
-        # Se não achou dinamicamente, força a regra da linha 3 (índice 2)
-        print("   - Cabeçalho não detectado automaticamente. Forçando Linha 3.")
-        if len(tabela_escolhida) > 2:
-            tabela_escolhida.columns = tabela_escolhida.iloc[2]
-            tabela_escolhida = tabela_escolhida[3:].reset_index(drop=True)
+        print(f"   ✅ Cabeçalho real encontrado na linha índice {idx_cabecalho} do {nome_ref}.")
+        df_bruto.columns = df_bruto.iloc[idx_cabecalho] # Define o novo cabeçalho
+        df_final = df_bruto[idx_cabecalho + 1:].reset_index(drop=True) # Pega os dados abaixo
+        return df_final
+    
+    # 3. Fallback: Se não achou nada, retorna como está (melhor que zerar)
+    print(f"   ⚠️ AVISO: Não encontrei a palavra 'Produto' nas primeiras linhas do {nome_ref}. Mantendo original.")
+    return df_bruto
 
-    print(f"   - Linhas de dados finais: {len(tabela_escolhida)}")
-    return tabela_escolhida
+def ler_tabela_inteligente(caminho_arquivo, nome_ref):
+    print(f"📖 Lendo {nome_ref}: {os.path.basename(caminho_arquivo)}")
+    
+    try:
+        # Lê todas as tabelas (sem assumir cabeçalho)
+        dfs = pd.read_html(caminho_arquivo, decimal=",", thousands=".", header=None)
+    except Exception:
+        try:
+            dfs = [pd.read_excel(caminho_arquivo, header=None)]
+        except Exception as e:
+            raise ValueError(f"Erro leitura: {e}")
+
+    if not dfs:
+        raise ValueError("Nenhuma tabela encontrada.")
+
+    # Escolhe a maior tabela (onde tem dados)
+    df_escolhido = max(dfs, key=len)
+    print(f"   - Tabela bruta selecionada com {len(df_escolhido)} linhas.")
+    
+    # Aplica a normalização do cabeçalho
+    df_limpo = normalizar_cabecalho(df_escolhido, nome_ref)
+    
+    print(f"   - Linhas de dados finais: {len(df_limpo)}")
+    return df_limpo
 
 # ===============================
 # EXECUÇÃO
@@ -150,7 +146,7 @@ try:
     Select(driver.find_element(By.ID, "str_fil")).select_by_visible_text("WHB CTBA")
     Select(driver.find_element(By.ID, "str_planta")).select_by_visible_text("USINAGEM CTBA")
     driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
-    time.sleep(15) 
+    time.sleep(15)
     
     html_pcp = salvar_html_pagina("pcp347_temp.html")
     df_entrada = ler_tabela_inteligente(html_pcp, "PCP347")
@@ -171,7 +167,7 @@ try:
 
     print("⏳ Aguardando download SD3...")
     arquivo_sd3 = None
-    for _ in range(90): 
+    for _ in range(90):
         novos = set(os.listdir(DOWNLOAD_DIR)) - arquivos_antes
         for f in novos:
             if f.endswith(('.xls', '.xlsx')) and "crdownload" not in f:
@@ -181,8 +177,7 @@ try:
         time.sleep(1)
 
     if not arquivo_sd3: raise Exception("Download SD3 falhou.")
-    
-    time.sleep(2) # Garante escrita em disco
+    time.sleep(2)
     
     df_consumo = ler_tabela_inteligente(arquivo_sd3, "SD3")
 
