@@ -1,336 +1,199 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custos Manutenção e Óleos</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.1.0"></script>
-    <style>
-        /* (MANTIVE SEU CSS ORIGINAL IGUALZINHO PARA NÃO QUEBRAR O LAYOUT) */
-        :root {
-            --bg-body-light: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --color-text-light: #333;
-            --bg-container-light: white;
-            --bg-controls-light: #f8f9fa;
-            --color-label-light: #495057;
-            --bg-input-light: white;
-            --border-input-light: #ced4da;
-            --bg-chart-light: white;
-            --info-icon-color-light: #aaa;
-            --info-icon-hover-color-light: #667eea;
-            --msg-error-bg-light: #f8d7da;
-            --msg-error-border-light: #f5c6cb;
-            --msg-error-color-light: #721c24;
-            --msg-success-bg-light: #d4edda;
-            --msg-success-border-light: #c3e6cb;
-            --msg-success-color-light: #155724;
-            --modal-bg-light: #fefefe;
-            --modal-border-light: #888;
-            --modal-header-border-light: #dee2e6;
-            --modal-table-border-light: #ddd;
-            --modal-table-header-bg-light: #f2f2f2;
-            --rules-li-bg-light: #f8f9fa;
-            --rules-li-border-light: #667eea;
-            --modal-table-stripe-bg-light: #f9f9f9;
-            --bg-body-dark: #1a1a2e;
-            --color-text-dark: #e0e0e0;
-            --bg-container-dark: #2c2c3e;
-            --bg-controls-dark: #242434;
-            --color-label-dark: #c0c0d0;
-            --bg-input-dark: #1f1f30;
-            --border-input-dark: #4a4a6a;
-            --bg-chart-dark: #242434;
-            --info-icon-color-dark: #888;
-            --info-icon-hover-color-dark: #a6b1ee;
-            --msg-error-bg-dark: #5a1e22;
-            --msg-error-border-dark: #f5c6cb;
-            --msg-error-color-dark: #f8d7da;
-            --msg-success-bg-dark: #1e4b28;
-            --msg-success-border-dark: #c3e6cb;
-            --msg-success-color-dark: #d4edda;
-            --modal-bg-dark: #2c2c3e;
-            --modal-border-dark: #4a4a6a;
-            --modal-header-border-dark: #4a4a6a;
-            --modal-table-border-dark: #4a4a6a;
-            --modal-table-header-bg-dark: #1f1f30;
-            --rules-li-bg-dark: #242434;
-            --rules-li-border-dark: #667eea;
-            --modal-table-stripe-bg-dark: #242434;
-        }
+# ===============================
+# IMPORTS
+# ===============================
+import os
+import time
+import calendar
+import pandas as pd
+from datetime import date
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
 
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: var(--bg-body-light); color: var(--color-text-light); min-height: 100vh; box-sizing: border-box; transition: background 0.3s, color 0.3s; }
-        body.dark-mode { background: var(--bg-body-dark); color: var(--color-text-dark); }
-        .container { background: var(--bg-container-light); border-radius: 15px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
-        body.dark-mode .container { background: var(--bg-container-dark); }
-        .title-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-right: 60px; }
-        .title-container h1 { margin: 0; font-size: 2em; }
-        .theme-switcher { position: absolute; top: 20px; right: 20px; background: none; border: 1px solid #ccc; border-radius: 50%; width: 40px; height: 40px; font-size: 20px; cursor: pointer; transition: all 0.3s; }
-        body.dark-mode .theme-switcher { border-color: #4a4a6a; color: #e0e0e0; }
-        .file-input { display: none; }
-        .upload-btn { background: linear-gradient(45deg, #667eea, #764ba2); color: white; padding: 10px 18px; border: none; border-radius: 25px; font-size: 15px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2); white-space: nowrap; }
-        .upload-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
-        .controls-container { background-color: var(--bg-controls-light); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        body.dark-mode .controls-container { background-color: var(--bg-controls-dark); }
-        .metas-container, .period-selector-container { display: flex; gap: 20px; }
-        .period-selector-container { margin-top: 20px; }
-        .meta-input-group, .period-selector-group { display: flex; flex-direction: column; flex: 1; }
-        .meta-input-group label, .period-selector-group label { margin-bottom: 5px; font-weight: bold; color: var(--color-label-light); }
-        body.dark-mode .meta-input-group label, body.dark-mode .period-selector-group label { color: var(--color-label-dark); }
-        .meta-input-group input, .period-selector-group select { padding: 10px; border-radius: 5px; border: 1px solid var(--border-input-light); font-size: 16px; background-color: var(--bg-input-light); color: var(--color-text-light); }
-        body.dark-mode .meta-input-group input, body.dark-mode .period-selector-group select { background-color: var(--bg-input-dark); border-color: var(--border-input-dark); color: var(--color-text-dark); }
-        .chart-container { margin-top: 30px; background: var(--bg-chart-light); border-radius: 10px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); position: relative; height: 450px; }
-        body.dark-mode .chart-container { background: var(--bg-chart-dark); }
-        .info-icon { position: absolute; top: 20px; right: 20px; font-size: 24px; color: var(--info-icon-color-light); cursor: pointer; z-index: 10; transition: color 0.3s ease; }
-        body.dark-mode .info-icon { color: var(--info-icon-color-dark); }
-        .info-icon:hover { color: var(--info-icon-hover-color-light); }
-        body.dark-mode .info-icon:hover { color: var(--info-icon-hover-color-dark); }
-        .decimal-toggle { position: absolute; top: 24px; right: 55px; font-size: 14px; cursor: pointer; z-index: 10; background: rgba(0, 0, 0, 0.1); color: #888; padding: 2px 6px; border-radius: 4px; font-weight: bold; transition: all 0.3s ease; user-select: none; }
-        body.dark-mode .decimal-toggle { background: rgba(255, 255, 255, 0.1); color: #aaa; }
-        .decimal-toggle.active { background: #667eea; color: white; }
-        .decimal-toggle:hover { transform: scale(1.1); }
-        .pareto-chart-container { height: 600px; }
-        .slider-container { padding: 10px 0; text-align: center; }
-        .slider-container label { margin-right: 10px; font-weight: bold; color: var(--color-label-light); }
-        body.dark-mode .slider-container label { color: var(--color-label-dark); }
-        .slider-container input[type="range"] { width: 50%; }
-        .message-box { border: 1px solid; padding: 15px; border-radius: 8px; margin: 20px 0; display: none; }
-        .error { background: var(--msg-error-bg-light); border-color: var(--msg-error-border-light); color: var(--msg-error-color-light); }
-        body.dark-mode .error { background: var(--msg-error-bg-dark); border-color: var(--msg-error-border-dark); color: var(--msg-error-color-dark); }
-        .success { background: var(--msg-success-bg-light); border-color: var(--msg-success-border-light); color: var(--msg-success-color-light); }
-        body.dark-mode .success { background: var(--msg-success-bg-dark); border-color: var(--msg-success-border-dark); color: var(--msg-success-color-dark); }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); }
-        .modal-content { background-color: var(--modal-bg-light); margin: 2% auto; padding: 20px; border: 1px solid var(--modal-border-light); width: 95%; max-width: 95%; height: 90vh; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
-        body.dark-mode .modal-content { background-color: var(--modal-bg-dark); border-color: var(--modal-border-dark); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--modal-header-border-light); padding-bottom: 15px; margin-bottom: 15px; }
-        body.dark-mode .modal-header { border-bottom-color: var(--modal-header-border-dark); }
-        .modal-header-buttons { display: flex; align-items: center; gap: 15px; }
-        .export-btn { background: #1d6f42; color: white; padding: 8px 16px; border: none; border-radius: 5px; font-size: 14px; cursor: pointer; transition: background 0.3s ease; }
-        .export-btn:hover { background: #27965a; }
-        .close-button { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
-        .close-button:hover, .close-button:focus { color: black; }
-        body.dark-mode .close-button:hover, body.dark-mode .close-button:focus { color: white; }
-        #modalTableContainer, #rulesModalBody { max-height: none; flex: 1; overflow-y: auto; }
-        #modalTable { width: 100%; border-collapse: collapse; font-size: 14px; }
-        #modalTable th, #modalTable td { border: 1px solid var(--modal-table-border-light); padding: 12px; text-align: left; vertical-align: middle; white-space: nowrap; }
-        body.dark-mode #modalTable th, body.dark-mode #modalTable td { border-color: var(--modal-table-border-dark); }
-        #modalTable th { background-color: var(--modal-table-header-bg-light); position: sticky; top: 0; font-weight: bold; cursor: pointer; user-select: none; }
-        #modalTable th.sort-asc::after { content: ' ▲'; font-size: 0.8em; }
-        #modalTable th.sort-desc::after { content: ' ▼'; font-size: 0.8em; }
-        body.dark-mode #modalTable th { background-color: var(--modal-table-header-bg-dark); }
-        #modalTable tbody tr:nth-child(even) { background-color: var(--modal-table-stripe-bg-light); }
-        body.dark-mode #modalTable tbody tr:nth-child(even) { background-color: var(--modal-table-stripe-bg-dark); }
-        #rulesModalBody ul { list-style-type: none; padding-left: 0; }
-        #rulesModalBody li { background: var(--rules-li-bg-light); border-left: 3px solid var(--rules-li-border-light); padding: 10px; margin-bottom: 10px; border-radius: 3px; }
-        body.dark-mode #rulesModalBody li { background: var(--rules-li-bg-dark); border-left-color: var(--rules-li-border-dark); }
-        #rulesModalBody strong { color: #333; }
-        body.dark-mode #rulesModalBody strong { color: #e0e0e0; }
-    </style>
-</head>
-<body class="dark-mode">
-    <div class="container">
-        <button id="themeSwitcher" class="theme-switcher">☀️</button>
-        <div class="title-container">
-            <h1>📊 Custos Manutenção e Óleos</h1>
-            <label for="fileInput" class="upload-btn">Carregar Manual (.xlsx)</label>
-            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls">
-        </div>
+# ===============================
+# CONFIGURAÇÕES
+# ===============================
+URL_LOGIN = "https://portal.whbbrasil.com.br/"
+URL_HOME = "https://portal.whbbrasil.com.br/Portalhome"
+URL_PCP347 = "https://portal.whbbrasil.com.br/pcp347"
 
-        <div class="controls-container">
-            <div class="metas-container">
-                <div class="meta-input-group">
-                    <label for="metaManutencaoInput">Meta Manutenção (R$)</label>
-                    <input type="number" id="metaManutencaoInput" value="720000" step="1000">
-                </div>
-                <div class="meta-input-group">
-                    <label for="metaOleosInput">Meta Óleos e Lubrificantes (R$)</label>
-                    <input type="number" id="metaOleosInput" value="406000" step="1000">
-                </div>
-            </div>
-            <div class="period-selector-container">
-                 <div class="period-selector-group">
-                    <label for="yearSelector">Ano</label>
-                    <select id="yearSelector"></select>
-                </div>
-                <div class="period-selector-group">
-                    <label for="monthSelector">Mês</label>
-                    <select id="monthSelector"></select>
-                </div>
-            </div>
-        </div>
-        
-        <div class="message-box error" id="errorMsg"></div>
-        <div class="message-box success" id="successMsg"></div>
-        
-        <div class="chart-container">
-            <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-            <span class="info-icon" data-chart-id="manutencaoChart">&#9432;</span>
-            <canvas id="manutencaoChart"></canvas>
-        </div>
-        <div class="chart-container">
-            <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-            <span class="info-icon" data-chart-id="oleosChart">&#9432;</span>
-            <canvas id="oleosChart"></canvas>
-        </div>
-        <div class="chart-container">
-            <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-            <span class="info-icon" data-chart-id="evolucaoMensalManutencaoChart">&#9432;</span>
-            <canvas id="evolucaoMensalManutencaoChart"></canvas>
-        </div>
-         <div class="chart-container">
-            <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-            <span class="info-icon" data-chart-id="evolucaoMensalOleosChart">&#9432;</span>
-            <canvas id="evolucaoMensalOleosChart"></canvas>
-        </div>
-        
-        <div class="chart-container pareto-chart-container">
-             <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-             <span class="info-icon" data-chart-id="paretoManutencaoChart">&#9432;</span>
-             <div class="slider-container">
-                <label for="paretoManutencaoSlider">Itens a Exibir:</label>
-                <input type="range" id="paretoManutencaoSlider" min="1" max="20" value="10">
-                <span id="paretoManutencaoSliderValue">10</span>
-            </div>
-            <canvas id="paretoManutencaoChart"></canvas>
-        </div>
-        <div class="chart-container pareto-chart-container">
-             <span class="decimal-toggle active" title="Alternar casas decimais">.00</span>
-             <span class="info-icon" data-chart-id="paretoEntradaProdutoManutencaoChart">&#9432;</span>
-             <div class="slider-container">
-                <label for="paretoEntradaProdutoManutencaoSlider">Itens a Exibir:</label>
-                <input type="range" id="paretoEntradaProdutoManutencaoSlider" min="1" max="20" value="10">
-                <span id="paretoEntradaProdutoManutencaoSliderValue">10</span>
-            </div>
-            <canvas id="paretoEntradaProdutoManutencaoChart"></canvas>
-        </div>
-        </div>
+USUARIO = "luanfp"
+SENHA = os.getenv("SUA_SENHA_PORTAL")
+DOWNLOAD_DIR = os.getcwd()
+DATA_HOJE = date.today()
 
-    <div id="detailsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modalTitle">Detalhes</h2>
-                <div class="modal-header-buttons">
-                    <button id="exportExcelBtn" class="export-btn">📥 Exportar Excel</button>
-                    <span class="close-button" id="closeDetailsModal">&times;</span>
-                </div>
-            </div>
-            <div id="modalTableContainer">
-                <table id="modalTable"></table>
-            </div>
-        </div>
-    </div>
+# ===============================
+# CHROME OPTIONS
+# ===============================
+options = webdriver.ChromeOptions()
+prefs = {
+    "download.default_directory": DOWNLOAD_DIR,
+    "download.prompt_for_download": False,
+    "directory_upgrade": True,
+    "safebrowsing.enabled": True
+}
+options.add_experimental_option("prefs", prefs)
+options.add_argument("--headless=new")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument("--window-size=1920,1080")
 
-    <div id="rulesModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="rulesModalTitle">Regras de Análise</h2>
-                <span class="close-button" id="closeRulesModal">&times;</span>
-            </div>
-            <div id="rulesModalBody"></div>
-        </div>
-    </div>
+driver = webdriver.Chrome(
+    service=ChromeService(ChromeDriverManager().install()),
+    options=options
+)
+wait = WebDriverWait(driver, 90)
 
-    <script>
-        // Variáveis globais
-        let manutencaoChart, oleosChart, evolucaoMensalManutencaoChart, evolucaoMensalOleosChart, paretoManutencaoChart, paretoOleosChart, paretoEntradaProdutoManutencaoChart, paretoEntradaProdutoOleosChart, paretoEntradaFornecedorManutencaoChart, paretoEntradaFornecedorOleosChart, paretoConsumoCCManutencaoChart, paretoConsumoCCOleosChart = null;
-        let detailedData = {}; 
-        let globalConsumoData = [], globalEntradaData = [], globalParetoManutencaoData = {}, globalParetoOleosData = {}, globalParetoEntradaProdutoManutencaoData = {}, globalParetoEntradaProdutoOleosData = {}, globalParetoEntradaFornecedorManutencaoData = {}, globalParetoEntradaFornecedorOleosData = {}, globalParetoConsumoCCManutencaoData = {}, globalParetoConsumoCCOleosData = {};
-        
-        let showDecimals = true;
+# ===============================
+# FUNÇÕES INTELIGENTES
+# ===============================
+def periodo_mes_atual():
+    primeiro = DATA_HOJE.replace(day=1)
+    _, ultimo_dia = calendar.monthrange(DATA_HOJE.year, DATA_HOJE.month)
+    ultimo = DATA_HOJE.replace(day=ultimo_dia)
+    return primeiro.strftime("%d/%m/%Y"), ultimo.strftime("%d/%m/%Y")
 
-        const fileInput = document.getElementById('fileInput');
-        const errorDiv = document.getElementById('errorMsg');
-        const successDiv = document.getElementById('successMsg');
-        const detailsModal = document.getElementById('detailsModal');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalTable = document.getElementById('modalTable');
-        const closeDetailsModal = document.getElementById('closeDetailsModal');
-        const rulesModal = document.getElementById('rulesModal');
-        const rulesModalTitle = document.getElementById('rulesModalTitle');
-        const rulesModalBody = document.getElementById('rulesModalBody');
-        const closeRulesModal = document.getElementById('closeRulesModal');
-        const metaManutencaoInput = document.getElementById('metaManutencaoInput');
-        const metaOleosInput = document.getElementById('metaOleosInput');
-        const exportExcelBtn = document.getElementById('exportExcelBtn');
-        const yearSelector = document.getElementById('yearSelector');
-        const monthSelector = document.getElementById('monthSelector');
-        
-        // Sliders (Verifique se todos os IDs existem no seu HTML completo)
-        const sliders = {
-            paretoManutencao: { slider: document.getElementById('paretoManutencaoSlider'), value: document.getElementById('paretoManutencaoSliderValue') },
-            // ... Mantenha o mapeamento dos sliders se existirem no HTML
-        };
-        const themeSwitcher = document.getElementById('themeSwitcher');
+def salvar_html_pagina(nome):
+    path = os.path.join(DOWNLOAD_DIR, nome)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(driver.page_source)
+    return path
 
-        // --- MANTER TODAS AS FUNÇÕES DE TEMA, SLIDER E GRÁFICOS DO CÓDIGO ORIGINAL AQUI ---
-        // (Copie as funções setChartTheme, redrawCharts, createOrUpdateBarChart, etc. do seu código anterior)
-        // ...
-        
-        // --- FUNÇÃO DE AUTO-LOAD (NOVIDADE) ---
-        async function carregarDadosAutomaticos() {
-            try {
-                showMessage(successDiv, 'Buscando dados atualizados do Bot...');
-                
-                // Tenta buscar o arquivo gerado pelo Bot
-                const response = await fetch('dados_dashboard.xlsx');
-                
-                if (!response.ok) {
-                    throw new Error("Arquivo 'dados_dashboard.xlsx' não encontrado.");
-                }
+def normalizar_cabecalho(df_bruto, nome_ref):
+    """
+    Procura a linha que contém a palavra 'Produto' ou 'Custo' para definir como cabeçalho.
+    """
+    print(f"   --- Diagnóstico Visual do {nome_ref} ---")
+    # Imprime as primeiras 5 linhas para sabermos o que o Python está vendo
+    print(df_bruto.head(5).to_string()) 
+    print("   ----------------------------------------")
 
-                const arrayBuffer = await response.arrayBuffer();
-                const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-                
-                // Processa Automaticamente
-                processWorkbook(workbook);
-                showMessage(successDiv, 'Dados carregados automaticamente com sucesso!');
-                
-            } catch (error) {
-                console.warn("Auto-load falhou:", error);
-                showMessage(errorDiv, 'Dados automáticos não encontrados. Use o botão para carregar manualmente.');
-            }
-        }
+    # 1. Verifica se o cabeçalho já está nas colunas (Python leu direto)
+    colunas_str = " ".join([str(c).upper() for c in df_bruto.columns])
+    if "PRODUTO" in colunas_str or "CUSTO" in colunas_str:
+        print(f"   ✅ Cabeçalho já identificado corretamente nas colunas do {nome_ref}.")
+        return df_bruto
 
-        function processWorkbook(workbook) {
-            // O Bot garante que a primeira aba é Consumo e a segunda é Entrada
-            // E o Bot já limpou as linhas, então lemos direto
-            const sheetNames = workbook.SheetNames;
+    # 2. Procura a linha de cabeçalho nos dados
+    idx_cabecalho = -1
+    for idx, row in df_bruto.head(15).iterrows():
+        # Converte linha para texto maiúsculo
+        linha_txt = row.astype(str).str.upper().values
+        # Procura palavras chaves que existem nos dois arquivos
+        if any("PRODUTO" in str(x) for x in linha_txt) and any("DESC" in str(x) for x in linha_txt):
+            idx_cabecalho = idx
+            break
             
-            if (sheetNames.length < 2) {
-                showMessage(errorDiv, 'O arquivo Excel precisa ter pelo menos 2 abas (Consumo e Entrada).');
-                return;
-            }
+    if idx_cabecalho != -1:
+        print(f"   ✅ Cabeçalho real encontrado na linha índice {idx_cabecalho} do {nome_ref}.")
+        df_bruto.columns = df_bruto.iloc[idx_cabecalho] # Define o novo cabeçalho
+        df_final = df_bruto[idx_cabecalho + 1:].reset_index(drop=True) # Pega os dados abaixo
+        return df_final
+    
+    # 3. Fallback: Se não achou nada, retorna como está (melhor que zerar)
+    print(f"   ⚠️ AVISO: Não encontrei a palavra 'Produto' nas primeiras linhas do {nome_ref}. Mantendo original.")
+    return df_bruto
 
-            // Lê as abas pelo índice, confiando na ordem que o Bot salvou
-            const sheetConsumo = workbook.Sheets[sheetNames[0]]; 
-            const sheetEntrada = workbook.Sheets[sheetNames[1]];
+def ler_tabela_inteligente(caminho_arquivo, nome_ref):
+    print(f"📖 Lendo {nome_ref}: {os.path.basename(caminho_arquivo)}")
+    
+    try:
+        # Lê todas as tabelas (sem assumir cabeçalho)
+        dfs = pd.read_html(caminho_arquivo, decimal=",", thousands=".", header=None)
+    except Exception:
+        try:
+            dfs = [pd.read_excel(caminho_arquivo, header=None)]
+        except Exception as e:
+            raise ValueError(f"Erro leitura: {e}")
 
-            const jsonOptions = { header: 1, defval: null };
-            
-            // Como o Bot já limpou o cabeçalho, lemos normal
-            globalConsumoData = XLSX.utils.sheet_to_json(sheetConsumo, jsonOptions);
-            globalEntradaData = XLSX.utils.sheet_to_json(sheetEntrada, jsonOptions);
-            
-            redrawCharts(); 
-        }
+    if not dfs:
+        raise ValueError("Nenhuma tabela encontrada.")
 
-        // --- Inicialização ---
-        document.addEventListener('DOMContentLoaded', () => {
-            // Suas funções de init originais
-            // populateDateSelectors(); // (Se você tiver essa função definida)
-            // setChartTheme(document.body.classList.contains('dark-mode'));
-            
-            // Tenta carregar os dados
-            carregarDadosAutomaticos();
-        });
+    # Escolhe a maior tabela (onde tem dados)
+    df_escolhido = max(dfs, key=len)
+    print(f"   - Tabela bruta selecionada com {len(df_escolhido)} linhas.")
+    
+    # Aplica a normalização do cabeçalho
+    df_limpo = normalizar_cabecalho(df_escolhido, nome_ref)
+    
+    print(f"   - Linhas de dados finais: {len(df_limpo)}")
+    return df_limpo
 
-        // Event Listeners (Manter os originais)
-        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
-        // ... (demais listeners)
+# ===============================
+# EXECUÇÃO
+# ===============================
+try:
+    if not SENHA: raise ValueError("Senha não definida!")
 
-        // --- MANTENHA O RESTANTE DAS FUNÇÕES DO SEU CÓDIGO ORIGINAL ABAIXO ---
-        // (handleFile, calculateTotal, functions de gráficos, etc.)
-    </script>
-</body>
-</html>
+    print("🔐 Login...")
+    driver.get(URL_LOGIN)
+    wait.until(EC.presence_of_element_located((By.ID, "login"))).send_keys(USUARIO)
+    driver.find_element(By.ID, "senha").send_keys(SENHA)
+    driver.find_element(By.ID, "submitButton").click()
+    wait.until(EC.url_to_be(URL_HOME))
+    
+    data_ini, data_fim = periodo_mes_atual()
+    
+    # 1. PCP347 (ENTRADA)
+    print("📄 PCP347 (Entrada)...")
+    driver.get(URL_PCP347)
+    wait.until(EC.url_contains("pcp347"))
+    driver.find_element(By.ID, "de_data").clear(); driver.find_element(By.ID, "de_data").send_keys(data_ini)
+    driver.find_element(By.ID, "ate_data").clear(); driver.find_element(By.ID, "ate_data").send_keys(data_fim)
+    Select(driver.find_element(By.ID, "str_fil")).select_by_visible_text("WHB CTBA")
+    Select(driver.find_element(By.ID, "str_planta")).select_by_visible_text("USINAGEM CTBA")
+    driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
+    time.sleep(15)
+    
+    html_pcp = salvar_html_pagina("pcp347_temp.html")
+    df_entrada = ler_tabela_inteligente(html_pcp, "PCP347")
+
+    # 2. SD3 (CONSUMO)
+    print("📊 SD3 (Consumo)...")
+    driver.execute_script("wl('/cus027')")
+    wait.until(EC.url_contains("cus027"))
+    driver.find_element(By.ID, "de_data").clear(); driver.find_element(By.ID, "de_data").send_keys(data_ini)
+    driver.find_element(By.ID, "ate_data").clear(); driver.find_element(By.ID, "ate_data").send_keys(data_fim)
+    Select(driver.find_element(By.ID, "str_emp")).select_by_visible_text("WHB AUTOMOTIVE / CURITIBA")
+    Select(driver.find_element(By.ID, "str_consumo")).select_by_visible_text("SIM")
+    driver.find_element(By.ID, "ate_cod").send_keys("ZZZZZZZZZZZZZZZ")
+    driver.find_element(By.ID, "ate_tipo").send_keys("ZZ")
+    
+    arquivos_antes = set(os.listdir(DOWNLOAD_DIR))
+    driver.find_element(By.XPATH, "//button[.//i[contains(@class,'fa-check')]]").click()
+
+    print("⏳ Aguardando download SD3...")
+    arquivo_sd3 = None
+    for _ in range(90):
+        novos = set(os.listdir(DOWNLOAD_DIR)) - arquivos_antes
+        for f in novos:
+            if f.endswith(('.xls', '.xlsx')) and "crdownload" not in f:
+                arquivo_sd3 = os.path.join(DOWNLOAD_DIR, f)
+                break
+        if arquivo_sd3: break
+        time.sleep(1)
+
+    if not arquivo_sd3: raise Exception("Download SD3 falhou.")
+    time.sleep(2)
+    
+    df_consumo = ler_tabela_inteligente(arquivo_sd3, "SD3")
+
+    # 3. SALVAR
+    caminho_final = os.path.join(DOWNLOAD_DIR, "dados_dashboard.xlsx")
+    with pd.ExcelWriter(caminho_final, engine='openpyxl') as writer:
+        df_consumo.to_excel(writer, sheet_name="Consumo", index=False)
+        df_entrada.to_excel(writer, sheet_name="Entrada", index=False)
+
+    print(f"🎉 FINALIZADO: {caminho_final}")
+    print(f"   - Consumo: {len(df_consumo)} linhas")
+    print(f"   - Entrada: {len(df_entrada)} linhas")
+
+except Exception as e:
+    print(f"❌ ERRO: {e}")
+    driver.save_screenshot("erro_final.png")
+    raise e
+finally:
+    driver.quit()
